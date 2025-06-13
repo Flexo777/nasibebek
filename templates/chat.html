@@ -1,0 +1,457 @@
+{% extends "base.html" %}
+
+{% block title %}Chat with {{ partner.username }}{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-[#2e204d] text-white p-6">
+  <div class="max-w-3xl mx-auto">
+    <div class="flex justify-between items-center mb-4">
+      <div>
+        <h2 class="text-xl font-bold text-orange-500">{{ partner.username }}</h2>
+        <p class="text-sm text-[#c2b3e0]">Room Chat</p>
+        <p id="typing-indicator" class="text-xs text-gray-400 mt-1 h-4"></p>
+      </div>
+      <a href="{{ url_for('dashboard') }}" class="text-sm text-orange-400 hover:text-orange-300 transition">
+        Dashboard
+      </a>
+    </div>
+
+    <div class="bg-[#3b2a5a] rounded-lg p-4 h-96 overflow-y-auto shadow-inner mb-4" id="chat-messages">
+      {% if messages %}
+        {% for message in messages %}
+          <div class="message {% if message.sender_id == current_user.id %}sent{% else %}received{% endif %} mb-3">
+            <div class="message-content">
+              {% if message.message_type == 'text' and message.content %}
+                <p>{{ message.content }}</p>
+              {% elif message.message_type == 'image' and message.content %}
+                <img src="{{ url_for('static', filename='uploads/' ~ message.content) }}" 
+                     class="chat-media" alt="Chat image"
+                     onerror="this.style.display='none'">
+              {% elif message.message_type == 'video' and message.content %}
+                <video controls class="chat-media">
+                  <source src="{{ url_for('static', filename='uploads/' ~ message.content) }}" type="video/mp4">
+                  Your browser doesn't support videos
+                </video>
+              {% endif %}
+            </div>
+            <div class="message-time">
+              {% if message.timestamp %}
+                {{ message.timestamp.strftime('%H:%M') if message.timestamp is not string else message.timestamp[11:16] }}
+              {% else %}
+                No timestamp
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="text-center text-gray-400 py-8" id="no-messages-placeholder">
+          <p>No messages yet. Start the conversation!</p>
+        </div>
+      {% endif %}
+    </div>
+
+    <form id="message-form" class="flex items-center gap-2">
+      <input type="text" name="message" id="message" placeholder="Type a message..."
+             class="flex-1 px-4 py-2 rounded bg-[#241a44] border border-[#4a3a7a] text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" 
+             oninput="previewMessage()">
+      <label for="media" class="cursor-pointer bg-[#4e3e75] hover:bg-[#5a4a85] px-3 py-2 rounded text-sm transition">
+        <span>Attach</span>
+        <input type="file" name="media" id="media" accept="image/*,video/mp4" class="hidden" onchange="previewMedia()">
+      </label>
+      <button type="submit" class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded text-sm">
+        Send
+      </button>
+    </form>
+
+    <div id="preview" class="mt-4 p-4 bg-[#3b2a5a] rounded-lg text-white hidden">
+      <h3 class="font-semibold text-lg mb-2">Preview:</h3>
+      <p id="preview-text" class="text-sm mb-2 hidden"></p>
+      <img id="preview-image" class="chat-media hidden max-w-full" alt="Preview Image">
+      <video id="preview-video" class="chat-media hidden" controls>
+        <source id="video-source" type="video/mp4">
+      </video>
+    </div>
+  </div>
+</div>
+
+<style>
+  /* Chat Message Styles */
+  .message {
+    max-width: 75%;
+    padding: 0.5rem;
+    border-radius: 0.75rem;
+    margin-bottom: 0.5rem;
+    animation: fadeIn 0.3s ease-out;
+  }
+  
+  .message.sent {
+    background-color: #674fa3;
+    margin-left: auto;
+    border-bottom-right-radius: 0;
+  }
+  
+  .message.received {
+    background-color: #cd6d05;
+    margin-right: auto;
+    border-bottom-left-radius: 0;
+  }
+  
+  .message-time {
+    font-size: 0.7rem;
+    opacity: 0.7;
+    margin-top: 0.25rem;
+    text-align: right;
+  }
+  
+  .chat-media {
+    max-width: 100%;
+    max-height: 300px;
+    border-radius: 0.5rem;
+    margin-top: 0.5rem;
+  }
+  
+  /* Animations */
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  
+  /* Scrollbar Styles */
+  #chat-messages::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  #chat-messages::-webkit-scrollbar-thumb {
+    background-color: #4e3e75;
+    border-radius: 3px;
+  }
+</style>
+
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script>
+  // Store variables from the template
+  var PARTNER_ID = "{{ partner.id }}";
+  var CURRENT_USER_ID = "{{ current_user.id }}";
+  var CURRENT_USERNAME = "{{ current_user.username }}"; 
+
+  // Inisialisasi Socket.IO
+  // Pastikan URL dan port sesuai dengan server Python Flask-SocketIO Anda
+  const socket = io('http://localhost:5000'); 
+  
+  // Ketika Socket.IO berhasil terhubung ke server
+  socket.on('connect', function() {
+      console.log('Connected to Socket.IO server!');
+      // Bergabung ke room chat spesifik antara dua pengguna
+      // Kirim current_user.id dan partner.id agar server bisa mengelola room
+      socket.emit('join_chat_room', {
+          user_id: CURRENT_USER_ID,
+          partner_id: PARTNER_ID
+      });
+  });
+
+  // Ketika koneksi terputus
+  socket.on('disconnect', function() {
+      console.log('Disconnected from Socket.IO server.');
+  });
+
+  // Menerima event pesan dari server
+  socket.on('receive_message', function(message) {
+      console.log('Received message:', message);
+      // Tambahkan pesan yang diterima ke UI chat
+      addMessageToChat(message, CURRENT_USER_ID);
+      scrollToBottom();
+  });
+
+  // Menerima event 'typing' dari server (dari partner chat)
+  socket.on('typing_status', function(data) {
+      const typingIndicator = document.getElementById('typing-indicator');
+      // Hanya tampilkan indikator jika yang mengetik adalah partner (bukan diri sendiri)
+      if (data.is_typing && data.user_id != CURRENT_USER_ID) {
+          typingIndicator.textContent = `${data.username} is typing...`;
+      } else {
+          typingIndicator.textContent = '';
+      }
+  });
+
+
+  // Auto-scroll to bottom when page loads
+  window.addEventListener('load', function() {
+    scrollToBottom();
+  });
+
+  // Auto-scroll to bottom when new messages arrive
+  function scrollToBottom() {
+    const chatContainer = document.getElementById('chat-messages');
+    if (chatContainer) {
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+  }
+
+  // Untuk debounce indikator mengetik
+  let typingTimer;
+
+  // Message preview functionality (also handles typing indicator)
+  function previewMessage() {
+    const messageText = document.getElementById('message').value.trim();
+    const previewText = document.getElementById('preview-text');
+    const previewDiv = document.getElementById('preview');
+    
+    if (messageText) {
+      previewText.textContent = messageText;
+      previewText.classList.remove('hidden');
+      previewDiv.classList.remove('hidden');
+    } else {
+      previewText.classList.add('hidden');
+      // Sembunyikan preview div hanya jika tidak ada teks DAN tidak ada media
+      if (!document.getElementById('preview-image').src && 
+          !document.getElementById('video-source').src) {
+        previewDiv.classList.add('hidden');
+      }
+    }
+    
+    // Kirim event 'typing' ke server
+    clearTimeout(typingTimer);
+    if (messageText) {
+        socket.emit('typing', {
+            user_id: CURRENT_USER_ID,
+            username: CURRENT_USERNAME,
+            partner_id: PARTNER_ID, // Kirim juga partner_id agar server tahu ke siapa indikator ini ditujukan
+            is_typing: true
+        });
+        // Set timer untuk mengirim 'not typing' setelah 3 detik
+        typingTimer = setTimeout(() => {
+            socket.emit('typing', {
+                user_id: CURRENT_USER_ID,
+                username: CURRENT_USERNAME,
+                partner_id: PARTNER_ID,
+                is_typing: false
+            });
+        }, 3000); 
+    } else {
+        // Jika input kosong, segera kirim 'not typing'
+        socket.emit('typing', {
+            user_id: CURRENT_USER_ID,
+            username: CURRENT_USERNAME,
+            partner_id: PARTNER_ID,
+            is_typing: false
+        });
+    }
+  }
+
+  // Media preview functionality
+  function previewMedia() {
+    const mediaInput = document.getElementById('media');
+    const previewDiv = document.getElementById('preview');
+    const previewImage = document.getElementById('preview-image');
+    const previewVideo = document.getElementById('preview-video');
+    const videoSource = document.getElementById('video-source');
+
+    // Reset previews
+    previewImage.classList.add('hidden');
+    previewVideo.classList.add('hidden');
+    previewImage.src = '';
+    videoSource.src = '';
+    
+    if (mediaInput.files && mediaInput.files[0]) {
+      const file = mediaInput.files[0];
+      const fileReader = new FileReader();
+
+      fileReader.onload = function(e) {
+        if (file.type.startsWith('image/')) {
+          previewImage.src = e.target.result;
+          previewImage.classList.remove('hidden');
+        } else if (file.type.startsWith('video/')) {
+          videoSource.src = e.target.result;
+          previewVideo.load(); // Penting untuk memuat video baru
+          previewVideo.classList.remove('hidden');
+        }
+        previewDiv.classList.remove('hidden');
+      };
+      
+      fileReader.readAsDataURL(file);
+    } else {
+      // Sembunyikan preview div jika tidak ada media DAN tidak ada teks
+      if (document.getElementById('message').value.trim() === '') {
+        previewDiv.classList.add('hidden');
+      }
+    }
+  }
+  
+  // Handle form submission with Socket.IO
+  document.getElementById('message-form').addEventListener('submit', function(e) {
+    e.preventDefault(); // Prevent default form submission
+    
+    const messageInput = document.getElementById('message');
+    const mediaInput = document.getElementById('media');
+    const messageText = messageInput.value.trim();
+    
+    // Don't submit if no content (text or file)
+    if (!messageText && (!mediaInput.files || !mediaInput.files[0])) {
+      return;
+    }
+    
+    const sendButton = document.querySelector('button[type="submit"]');
+    sendButton.disabled = true;
+    sendButton.innerText = 'Sending...';
+
+    const file = mediaInput.files && mediaInput.files[0] ? mediaInput.files[0] : null;
+
+    if (file) {
+        // Step 1: Upload file via traditional Fetch API first
+        const formData = new FormData();
+        formData.append('media', file);
+
+        fetch('/api/upload_media', { // Gunakan endpoint upload media yang baru
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(uploadData => {
+            if (uploadData.success) {
+                // Step 2: If file upload is successful, send message info via Socket.IO
+                let message_type;
+                if (file.type.startsWith('image/')) {
+                    message_type = 'image';
+                } else if (file.type.startsWith('video/')) {
+                    message_type = 'video';
+                }
+
+                socket.emit('send_message', {
+                    sender_id: CURRENT_USER_ID,
+                    receiver_id: PARTNER_ID,
+                    message_type: message_type,
+                    content: uploadData.filename, // content is now the uploaded filename
+                    text_message: messageText // Opsional: kirim teks tambahan bersama media
+                }, (response) => {
+                    sendButton.disabled = false;
+                    sendButton.innerText = 'Send';
+                    if (response && response.success) {
+                        messageInput.value = '';
+                        mediaInput.value = '';
+                        clearPreview();
+                        scrollToBottom();
+                    } else {
+                        alert('Failed to send message: ' + (response.error || 'Unknown error'));
+                    }
+                });
+
+            } else {
+                alert('File upload failed: ' + (uploadData.error || 'Unknown error'));
+                sendButton.disabled = false;
+                sendButton.innerText = 'Send';
+            }
+        })
+        .catch(error => {
+            console.error('Upload Error:', error);
+            alert('An error occurred during file upload. Please try again.');
+            sendButton.disabled = false;
+            sendButton.innerText = 'Send';
+        });
+    } else {
+        // If only text message, send directly via Socket.IO
+        socket.emit('send_message', {
+            sender_id: CURRENT_USER_ID,
+            receiver_id: PARTNER_ID,
+            message_type: 'text',
+            content: messageText,
+            file: null // No file to send
+        }, (response) => {
+            sendButton.disabled = false;
+            sendButton.innerText = 'Send';
+            if (response && response.success) {
+                messageInput.value = '';
+                mediaInput.value = '';
+                clearPreview();
+                scrollToBottom();
+            } else {
+                alert('Failed to send message: ' + (response.error || 'Unknown error'));
+            }
+        });
+    }
+
+    // Clear the typing indicator immediately after sending a message
+    clearTimeout(typingTimer);
+    socket.emit('typing', {
+        user_id: CURRENT_USER_ID,
+        username: CURRENT_USERNAME,
+        partner_id: PARTNER_ID,
+        is_typing: false
+    });
+    document.getElementById('typing-indicator').textContent = '';
+  });
+  
+  // Function to add a new message to the chat UI
+  function addMessageToChat(message, currentUserId) {
+    const chatMessages = document.getElementById('chat-messages');
+    const noMessagesPlaceholder = document.getElementById('no-messages-placeholder');
+    
+    // Remove the "no messages" placeholder if it exists
+    if (noMessagesPlaceholder) {
+      noMessagesPlaceholder.remove();
+    }
+    
+    // Create the message element
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'message ' + (message.sender_id == currentUserId ? 'sent' : 'received') + ' mb-3';
+    
+    // Create the message content
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'message-content';
+    
+    // Add content based on message type
+    if (message.message_type === 'text') {
+      const paragraph = document.createElement('p');
+      paragraph.textContent = message.content;
+      contentDiv.appendChild(paragraph);
+    } else if (message.message_type === 'image') {
+      const img = document.createElement('img');
+      img.src = '/static/uploads/' + message.content;
+      img.className = 'chat-media';
+      img.alt = 'Chat image';
+      img.onerror = function() { this.style.display = 'none'; };
+      contentDiv.appendChild(img);
+    } else if (message.message_type === 'video') {
+      const video = document.createElement('video');
+      video.controls = true;
+      video.className = 'chat-media';
+      
+      const source = document.createElement('source');
+      source.src = '/static/uploads/' + message.content;
+      source.type = 'video/mp4'; 
+      
+      video.appendChild(source);
+      contentDiv.appendChild(video);
+    }
+    
+    // Create timestamp
+    const timeDiv = document.createElement('div');
+    timeDiv.className = 'message-time';
+    
+    // Format timestamp (if ISO string format)
+    const timestamp = message.timestamp || 'No timestamp';
+    if (typeof timestamp === 'string') {
+      const date = new Date(timestamp);
+      timeDiv.textContent = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } else {
+      timeDiv.textContent = timestamp;
+    }
+    
+    // Assemble the message
+    messageDiv.appendChild(contentDiv);
+    messageDiv.appendChild(timeDiv);
+    
+    // Add to chat
+    chatMessages.appendChild(messageDiv);
+  }
+
+  function clearPreview() {
+    document.getElementById('preview').classList.add('hidden');
+    document.getElementById('preview-text').classList.add('hidden');
+    document.getElementById('preview-image').classList.add('hidden');
+    document.getElementById('preview-video').classList.add('hidden');
+    document.getElementById('preview-image').src = '';
+    document.getElementById('video-source').src = '';
+    document.getElementById('media').value = ''; // Clear file input as well
+  }
+</script>
+{% endblock %}

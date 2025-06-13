@@ -1,0 +1,96 @@
+/* ===================== */
+/* Custom Scrollbar */
+/* ===================== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #2e204d;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #4e3e75;
+  border-radius: 4px;
+  border: 1px solid #3b2a5a;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #5a4a85;
+}
+
+/* ===================== */
+/* Chat Message Animations */
+/* ===================== */
+@keyframes messageFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+#chat-messages > div {
+  animation: messageFadeIn 0.3s ease-out forwards;
+  will-change: transform, opacity;
+}
+
+/* ===================== */
+/* Message Bubble Styles */
+/* ===================== */
+.message.sent {
+  background-color: #4e3e75;
+  color: white;
+  align-self: flex-end;
+  border-radius: 12px 12px 0 12px;
+  max-width: 70%;
+}
+
+.message.received {
+  background-color: #3b2a5a;
+  color: white;
+  align-self: flex-start;
+  border-radius: 12px 12px 12px 0;
+  max-width: 70%;
+}
+
+.message-content {
+  padding: 10px 14px;
+  word-wrap: break-word;
+}
+
+.message-time {
+  font-size: 0.75rem;
+  opacity: 0.7;
+  margin-top: 4px;
+}
+
+/* ===================== */
+/* Media Styles */
+/* ===================== */
+.chat-media {
+  max-width: 100%;
+  border-radius: 8px;
+  margin-top: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* ===================== */
+/* Responsive Adjustments */
+/* ===================== */
+@media (max-width: 640px) {
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  
+  .message.sent,
+  .message.received {
+    max-width: 85%;
+  }
+}

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Login{% endblock %}
+
+{% block content %}
+<div class="flex justify-center items-center min-h-screen">
+  <div class="bg-[#3b2a5a] rounded-md p-8 w-full max-w-xs">
+    <div class="flex flex-col items-center mb-6">
+      <img src="{{ url_for('static', filename='images/rocket-orange.png') }}" alt="RAPTOR Logo" class="w-12 h-12 mb-4">
+      <h1 class="text-xl font-bold text-orange-600">RAPTOR CHAT</h1>
+    </div>
+    
+    <!-- Menampilkan pesan flash error jika ada -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="bg-red-600 text-white p-3 rounded-md mb-4">
+          <ul>
+            {% for category, message in messages %}
+              <li>{{ message }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+    {% endwith %}
+    
+    <form method="POST" action="{{ url_for('login') }}">
+      <div class="space-y-4">
+        <div>
+          <input class="w-full text-sm rounded bg-[#241a44] border border-[#4a3a7a] px-4 py-2 placeholder-[#6e5a9a] focus:outline-none focus:ring-1 focus:ring-orange-500" 
+                 name="email" placeholder="Enter your email" type="email" required>
+        </div>
+        <div>
+          <input class="w-full text-sm rounded bg-[#241a44] border border-[#4a3a7a] px-4 py-2 placeholder-[#6e5a9a] focus:outline-none focus:ring-1 focus:ring-orange-500" 
+                 name="password" placeholder="Enter your password" type="password" required>
+        </div>
+        <button class="w-full bg-orange-600 text-sm font-semibold rounded py-2 hover:bg-orange-700 transition" type="submit">
+          Login
+        </button>
+      </div>
+    </form>
+    
+    <div class="mt-4 text-center">
+      <a href="{{ url_for('register') }}" class="text-xs text-[#6e5a9a] hover:text-orange-500 transition">
+        Don't have an account? Register here
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}
