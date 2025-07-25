@@ -4,10 +4,10 @@ from app.security import Encryption
 from app.storage import LogManager
 
 class Server:
-    def __init__(self, host="0.0.0.0", port=12346):  # Ubah port ke 12346
+    def __init__(self, host="0.0.0.0", port=12346):  
         self.host = host
         self.port = port
-        # ... kode lainnya tetap sama   
+        
 
     def start(self):
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

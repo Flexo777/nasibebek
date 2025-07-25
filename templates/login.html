@@ -10,10 +10,10 @@
       <h1 class="text-xl font-bold text-orange-600">RAPTOR CHAT</h1>
     </div>
     
-    <!-- Menampilkan pesan flash error jika ada -->
+
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
-        <div class="bg-red-600 text-white p-3 rounded-md mb-4">
+        <div class="bg-green-600 text-white p-3 rounded-md mb-4">
           <ul>
             {% for category, message in messages %}
               <li>{{ message }}</li>

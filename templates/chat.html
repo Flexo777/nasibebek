@@ -75,7 +75,6 @@
 </div>
 
 <style>
-  /* Chat Message Styles */
   .message {
     max-width: 75%;
     padding: 0.5rem;
@@ -110,13 +109,11 @@
     margin-top: 0.5rem;
   }
   
-  /* Animations */
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(5px); }
     to { opacity: 1; transform: translateY(0); }
   }
   
-  /* Scrollbar Styles */
   #chat-messages::-webkit-scrollbar {
     width: 6px;
   }
@@ -129,43 +126,33 @@
 
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script>
-  // Store variables from the template
   var PARTNER_ID = "{{ partner.id }}";
   var CURRENT_USER_ID = "{{ current_user.id }}";
   var CURRENT_USERNAME = "{{ current_user.username }}"; 
 
-  // Inisialisasi Socket.IO
-  // Pastikan URL dan port sesuai dengan server Python Flask-SocketIO Anda
-  const socket = io('http://localhost:5000'); 
+    const socket = io(); 
   
-  // Ketika Socket.IO berhasil terhubung ke server
   socket.on('connect', function() {
+
       console.log('Connected to Socket.IO server!');
-      // Bergabung ke room chat spesifik antara dua pengguna
-      // Kirim current_user.id dan partner.id agar server bisa mengelola room
       socket.emit('join_chat_room', {
           user_id: CURRENT_USER_ID,
           partner_id: PARTNER_ID
       });
   });
 
-  // Ketika koneksi terputus
   socket.on('disconnect', function() {
       console.log('Disconnected from Socket.IO server.');
   });
 
-  // Menerima event pesan dari server
   socket.on('receive_message', function(message) {
       console.log('Received message:', message);
-      // Tambahkan pesan yang diterima ke UI chat
       addMessageToChat(message, CURRENT_USER_ID);
       scrollToBottom();
   });
 
-  // Menerima event 'typing' dari server (dari partner chat)
   socket.on('typing_status', function(data) {
       const typingIndicator = document.getElementById('typing-indicator');
-      // Hanya tampilkan indikator jika yang mengetik adalah partner (bukan diri sendiri)
       if (data.is_typing && data.user_id != CURRENT_USER_ID) {
           typingIndicator.textContent = `${data.username} is typing...`;
       } else {
@@ -174,12 +161,10 @@
   });
 
 
-  // Auto-scroll to bottom when page loads
   window.addEventListener('load', function() {
     scrollToBottom();
   });
 
-  // Auto-scroll to bottom when new messages arrive
   function scrollToBottom() {
     const chatContainer = document.getElementById('chat-messages');
     if (chatContainer) {
@@ -187,10 +172,8 @@
     }
   }
 
-  // Untuk debounce indikator mengetik
   let typingTimer;
 
-  // Message preview functionality (also handles typing indicator)
   function previewMessage() {
     const messageText = document.getElementById('message').value.trim();
     const previewText = document.getElementById('preview-text');
@@ -202,23 +185,20 @@
       previewDiv.classList.remove('hidden');
     } else {
       previewText.classList.add('hidden');
-      // Sembunyikan preview div hanya jika tidak ada teks DAN tidak ada media
       if (!document.getElementById('preview-image').src && 
           !document.getElementById('video-source').src) {
         previewDiv.classList.add('hidden');
       }
     }
     
-    // Kirim event 'typing' ke server
     clearTimeout(typingTimer);
     if (messageText) {
         socket.emit('typing', {
             user_id: CURRENT_USER_ID,
             username: CURRENT_USERNAME,
-            partner_id: PARTNER_ID, // Kirim juga partner_id agar server tahu ke siapa indikator ini ditujukan
+            partner_id: PARTNER_ID,
             is_typing: true
         });
-        // Set timer untuk mengirim 'not typing' setelah 3 detik
         typingTimer = setTimeout(() => {
             socket.emit('typing', {
                 user_id: CURRENT_USER_ID,
@@ -228,7 +208,6 @@
             });
         }, 3000); 
     } else {
-        // Jika input kosong, segera kirim 'not typing'
         socket.emit('typing', {
             user_id: CURRENT_USER_ID,
             username: CURRENT_USERNAME,
@@ -238,7 +217,6 @@
     }
   }
 
-  // Media preview functionality
   function previewMedia() {
     const mediaInput = document.getElementById('media');
     const previewDiv = document.getElementById('preview');
@@ -246,7 +224,6 @@
     const previewVideo = document.getElementById('preview-video');
     const videoSource = document.getElementById('video-source');
 
-    // Reset previews
     previewImage.classList.add('hidden');
     previewVideo.classList.add('hidden');
     previewImage.src = '';
@@ -262,7 +239,7 @@
           previewImage.classList.remove('hidden');
         } else if (file.type.startsWith('video/')) {
           videoSource.src = e.target.result;
-          previewVideo.load(); // Penting untuk memuat video baru
+          previewVideo.load(); 
           previewVideo.classList.remove('hidden');
         }
         previewDiv.classList.remove('hidden');
@@ -270,22 +247,19 @@
       
       fileReader.readAsDataURL(file);
     } else {
-      // Sembunyikan preview div jika tidak ada media DAN tidak ada teks
       if (document.getElementById('message').value.trim() === '') {
         previewDiv.classList.add('hidden');
       }
     }
   }
   
-  // Handle form submission with Socket.IO
   document.getElementById('message-form').addEventListener('submit', function(e) {
-    e.preventDefault(); // Prevent default form submission
+    e.preventDefault(); 
     
     const messageInput = document.getElementById('message');
     const mediaInput = document.getElementById('media');
     const messageText = messageInput.value.trim();
     
-    // Don't submit if no content (text or file)
     if (!messageText && (!mediaInput.files || !mediaInput.files[0])) {
       return;
     }
@@ -297,18 +271,16 @@
     const file = mediaInput.files && mediaInput.files[0] ? mediaInput.files[0] : null;
 
     if (file) {
-        // Step 1: Upload file via traditional Fetch API first
         const formData = new FormData();
         formData.append('media', file);
 
-        fetch('/api/upload_media', { // Gunakan endpoint upload media yang baru
+        fetch('/api/upload_media', { 
             method: 'POST',
             body: formData
         })
         .then(response => response.json())
         .then(uploadData => {
             if (uploadData.success) {
-                // Step 2: If file upload is successful, send message info via Socket.IO
                 let message_type;
                 if (file.type.startsWith('image/')) {
                     message_type = 'image';
@@ -320,8 +292,8 @@
                     sender_id: CURRENT_USER_ID,
                     receiver_id: PARTNER_ID,
                     message_type: message_type,
-                    content: uploadData.filename, // content is now the uploaded filename
-                    text_message: messageText // Opsional: kirim teks tambahan bersama media
+                    content: uploadData.filename, 
+                    text_message: messageText 
                 }, (response) => {
                     sendButton.disabled = false;
                     sendButton.innerText = 'Send';
@@ -348,13 +320,12 @@
             sendButton.innerText = 'Send';
         });
     } else {
-        // If only text message, send directly via Socket.IO
         socket.emit('send_message', {
             sender_id: CURRENT_USER_ID,
             receiver_id: PARTNER_ID,
             message_type: 'text',
             content: messageText,
-            file: null // No file to send
+            file: null 
         }, (response) => {
             sendButton.disabled = false;
             sendButton.innerText = 'Send';
@@ -369,7 +340,6 @@
         });
     }
 
-    // Clear the typing indicator immediately after sending a message
     clearTimeout(typingTimer);
     socket.emit('typing', {
         user_id: CURRENT_USER_ID,
@@ -380,25 +350,20 @@
     document.getElementById('typing-indicator').textContent = '';
   });
   
-  // Function to add a new message to the chat UI
   function addMessageToChat(message, currentUserId) {
     const chatMessages = document.getElementById('chat-messages');
     const noMessagesPlaceholder = document.getElementById('no-messages-placeholder');
     
-    // Remove the "no messages" placeholder if it exists
     if (noMessagesPlaceholder) {
       noMessagesPlaceholder.remove();
     }
     
-    // Create the message element
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message ' + (message.sender_id == currentUserId ? 'sent' : 'received') + ' mb-3';
     
-    // Create the message content
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
     
-    // Add content based on message type
     if (message.message_type === 'text') {
       const paragraph = document.createElement('p');
       paragraph.textContent = message.content;
@@ -423,11 +388,9 @@
       contentDiv.appendChild(video);
     }
     
-    // Create timestamp
     const timeDiv = document.createElement('div');
     timeDiv.className = 'message-time';
     
-    // Format timestamp (if ISO string format)
     const timestamp = message.timestamp || 'No timestamp';
     if (typeof timestamp === 'string') {
       const date = new Date(timestamp);
@@ -436,11 +399,9 @@
       timeDiv.textContent = timestamp;
     }
     
-    // Assemble the message
     messageDiv.appendChild(contentDiv);
     messageDiv.appendChild(timeDiv);
     
-    // Add to chat
     chatMessages.appendChild(messageDiv);
   }
 
@@ -451,7 +412,7 @@
     document.getElementById('preview-video').classList.add('hidden');
     document.getElementById('preview-image').src = '';
     document.getElementById('video-source').src = '';
-    document.getElementById('media').value = ''; // Clear file input as well
+    document.getElementById('media').value = ''; 
   }
 </script>
 {% endblock %}

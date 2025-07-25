@@ -10,7 +10,6 @@
       <h1 class="text-xl font-bold text-orange-600">RAPTOR CHAT</h1>
     </div>
     
-    <!-- Menampilkan pesan flash error atau success jika ada -->
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         <div class="bg-red-600 text-white p-3 rounded-md mb-4">
@@ -27,25 +26,19 @@
       <div class="space-y-4">
         <div>
           <input class="w-full text-sm rounded bg-[#241a44] border border-[#4a3a7a] px-4 py-2 placeholder-[#6e5a9a] focus:outline-none focus:ring-1 focus:ring-orange-500" 
-                 name="username" placeholder="Enter your username" type="text" required>
+                     name="username" placeholder="Enter your username" type="text" required value="{{ username if username }}">
         </div>
         <div>
           <input class="w-full text-sm rounded bg-[#241a44] border border-[#4a3a7a] px-4 py-2 placeholder-[#6e5a9a] focus:outline-none focus:ring-1 focus:ring-orange-500" 
-                 name="email" placeholder="Enter your email" type="email" required>
+                     name="email" placeholder="Enter your email" type="email" required value="{{ email if email }}">
         </div>
         <div>
           <input class="w-full text-sm rounded bg-[#241a44] border border-[#4a3a7a] px-4 py-2 placeholder-[#6e5a9a] focus:outline-none focus:ring-1 focus:ring-orange-500" 
-                 name="password" placeholder="Enter your password" type="password" required>
+                     name="password" id="password" placeholder="Enter your password" type="password" required minlength="8">
+          <div id="password-strength" class="text-xs mt-1 text-gray-400"></div>
         </div>
-        <div>
-          <select class="w-full text-sm rounded bg-[#241a44] border border-[#4a3a7a] px-4 py-2 text-[#a3a3a3] focus:outline-none focus:ring-1 focus:ring-orange-500" 
-                  name="gender" required>
-            <option disabled selected>Choose your gender</option>
-            <option value="male">Male</option>
-            <option value="female">Female</option>
-            <option value="other">Other</option>
-          </select>
-        </div>
+        {# BLOCK GENDER DIHAPUS SEPENUHNYA #}
+        
         <button class="w-full bg-orange-600 text-sm font-semibold rounded py-2 hover:bg-orange-700 transition" type="submit">
           Register
         </button>
@@ -59,4 +52,42 @@
     </div>
   </div>
 </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const passwordInput = document.getElementById('password');
+        const passwordStrength = document.getElementById('password-strength');
+
+        passwordInput.addEventListener('input', function() {
+            const password = passwordInput.value;
+            let feedback = [];
+
+            if (password.length < 8) {
+                feedback.push('Min. 8 characters');
+            }
+            if (!/[A-Z]/.test(password)) {
+                feedback.push('One uppercase letter');
+            }
+            if (!/[a-z]/.test(password)) {
+                feedback.push('One lowercase letter');
+            }
+            if (!/\d/.test(password)) {
+                feedback.push('One number');
+            }
+            // Menggunakan regex yang sama dengan server-side untuk konsistensi
+            // Anda bisa menyesuaikan simbol di sini jika ingin mengubah di masa depan
+            if (!/[!@#$%^&*()_+={}\[\]|\\:;\"'<>,.?/~`-]/.test(password)) {
+                feedback.push('One special character');
+            }
+
+            if (feedback.length === 0) {
+                passwordStrength.textContent = 'Strong password!';
+                passwordStrength.className = 'text-xs mt-1 text-green-500';
+            } else {
+                passwordStrength.textContent = 'Needs: ' + feedback.join(', ');
+                passwordStrength.className = 'text-xs mt-1 text-red-500';
+            }
+        });
+    });
+</script>
 {% endblock %}

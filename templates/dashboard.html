@@ -3,7 +3,7 @@
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
-<div class="min-h-screen bg-[#2e204d] text-white p-6">
+<div class="min-h-screen bg-[#2e204d] text-white p-6" data-user-id="{{ current_user.id }}">
     <div class="max-w-4xl mx-auto">
         <div class="flex justify-between items-center mb-6">
             <div>
@@ -12,6 +12,7 @@
             </div>
             <div class="flex items-center space-x-4">
                 <div class="relative cursor-pointer" id="notification-bell">
+                    <!-- SVG Icon for Bell - You already have this -->
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-7 h-7 text-white">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9.5c0-1.036-.39-2.005-1.036-2.728-.853-.97-2.01-1.636-3.321-1.784A2.062 2.062 0 0 0 12 4.095V3.75c0-1.006-.842-1.824-1.875-1.824H9.375C8.342 1.926 7.5 2.744 7.5 3.75v.345c0 .713-.047 1.4-.145 2.064-.9.64-1.744 1.34-2.502 2.138A9.754 9.754 0 0 0 6 12.047V13.5c0 1.006.842 1.824 1.875 1.824h.375a3 3 0 0 0 3-3V9.75a.75.75 0 0 1 1.5 0v.667A23.848 23.848 0 0 0 14.857 17.082Z" />
                     </svg>
@@ -29,7 +30,20 @@
             <div class="p-4">
                 <h3 class="text-lg font-semibold text-orange-400 mb-2">New Messages</h3>
                 <ul id="new-messages-list" class="space-y-2 max-h-48 overflow-y-auto">
-                    <li class="text-sm text-gray-400" id="no-new-messages-placeholder">No new messages.</li>
+                    <!-- Initial notifications will be rendered here by Jinja2 -->
+                    {% if notifications %}
+                        {% for notif in notifications %}
+                            <li id="notification-item-{{ notif.id }}" data-notification-id="{{ notif.id }}" data-sender-id="{{ notif.sender_id }}" class="bg-[#2e204d] p-2 rounded flex justify-between items-center">
+                                <div>
+                                    <span class="font-semibold text-orange-300">{{ notif.sender_name }}</span>
+                                    <p class="text-sm truncate notification-message">{{ notif.content }}</p>
+                                </div>
+                                <a href="/chat/{{ notif.sender_id }}" class="text-blue-400 hover:underline text-sm ml-2">Chat</a>
+                            </li>
+                        {% endfor %}
+                    {% else %}
+                        <li class="text-sm text-gray-400" id="no-new-messages-placeholder">No new messages.</li>
+                    {% endif %}
                 </ul>
                 <button id="clear-notifications" class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white text-sm py-2 rounded">Clear All</button>
             </div>
@@ -57,43 +71,117 @@
                 {% endif %}
             </ul>
         </div>
-
-        <div class="bg-[#3b2a5a] rounded-lg p-4 shadow-md">
-            <h2 class="text-lg font-semibold text-orange-400 mb-3">Recent Activity</h2>
-            <p class="text-sm text-gray-400">No recent activity</p>
-        </div>
     </div>
 </div>
 
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script>
-    const CURRENT_USER_ID = "{{ current_user.id }}"; 
+    // Penting: CURRENT_USER_ID sekarang diambil dari atribut data
+    const mainContentDiv = document.querySelector('.min-h-screen');
+    const CURRENT_USER_ID = parseInt(mainContentDiv.dataset.userId); 
+
     const onlineUsersList = document.getElementById('online-users-list');
     const noOnlineUsersPlaceholder = document.getElementById('no-online-users-placeholder');
     const notificationBell = document.getElementById('notification-bell');
     const notificationBadge = document.getElementById('notification-badge');
     const notificationListContainer = document.getElementById('notification-list-container');
     const newMessagesList = document.getElementById('new-messages-list');
-    const noNewMessagesPlaceholder = document.getElementById('no-new-messages-placeholder');
     const clearNotificationsBtn = document.getElementById('clear-notifications');
 
     let notificationCount = 0;
-    let notifications = {}; // To store messages by sender, avoiding duplicates
+    // Store notifications by their database ID for easy management
+    let notificationsMap = {}; 
 
-    // Inisialisasi Socket.IO
-    // Menggunakan io() tanpa argumen untuk terhubung ke host yang sama
     const socket = io(); 
 
-    // Audio untuk notifikasi (Anda bisa ganti dengan path file audio Anda)
-    const notificationSound = new Audio('/static/sounds/notification.mp3'); // Pastikan path ini benar
+    // Play notification sound (ensure you have this file at /static/sounds/notification.mp3)
+    const notificationSound = new Audio('/static/sounds/notification.mp3'); 
 
+    // Initial Load of Notifications from Server
+    // Notifikasi awal sekarang di-render langsung oleh Jinja2 di dalam <ul> #new-messages-list
+    // Kita hanya perlu mengambil notifikasi ini dan menghitungnya saat DOM siap.
+    const initialNotificationItems = newMessagesList.querySelectorAll('li[data-notification-id]');
+    initialNotificationItems.forEach(item => {
+        const notificationId = parseInt(item.dataset.notificationId);
+        const senderId = parseInt(item.dataset.senderId);
+        const senderName = item.querySelector('.font-semibold').textContent;
+        const messagePreview = item.querySelector('.notification-message').textContent;
+        notificationsMap[notificationId] = { senderId, senderName, messagePreview };
+        notificationCount++;
+
+        // Attach click listener to initially loaded items
+        item.addEventListener('click', function() {
+            socket.emit('mark_notification_as_read', { notification_id: notificationId });
+            item.remove();
+            delete notificationsMap[notificationId];
+            notificationCount--;
+            updateNotificationBadge();
+            if (notificationCount === 0) {
+                newMessagesList.innerHTML = '<li class="text-sm text-gray-400" id="no-new-messages-placeholder">No new messages.</li>';
+            }
+        });
+    });
+    updateNotificationBadge(); 
+    // Jika ada notifikasi awal, pastikan placeholder "No new messages." dihapus
+    if (notificationCount > 0) {
+        const noNewMessagesPlaceholder = document.getElementById('no-new-messages-placeholder');
+        if (noNewMessagesPlaceholder) {
+            noNewMessagesPlaceholder.remove();
+        }
+    }
+
+
+    // Socket.IO Event Handlers
     socket.on('connect', function() {
         console.log('Connected to Socket.IO server from Dashboard!');
         socket.emit('user_online', { user_id: CURRENT_USER_ID });
+        // Karena notifikasi awal sudah dihitung dari Jinja, kita tidak perlu request_notification_count saat connect
+        // Ini hanya diperlukan jika Anda tidak me-render notifikasi awal via Jinja.
+        // Namun, jika ada potensi notifikasi baru saat user login (setelah offline), ini masih relevan.
+        // Untuk alur persisten via DB, request_notification_count tetap bisa digunakan untuk sinkronisasi.
+        socket.emit('request_notification_count'); 
     });
 
     socket.on('disconnect', function() {
         console.log('Disconnected from Socket.IO server from Dashboard.');
+    });
+
+    // Handle initial count or count updates from server
+    socket.on('notification_count_update', function(data) {
+        // Ini akan memperbarui hitungan badge agar sinkron dengan server
+        notificationCount = data.count;
+        updateNotificationBadge();
+        console.log(`Notification count updated to: ${notificationCount}`);
+    });
+
+    // Handle new incoming notifications (real-time)
+    socket.on('new_notification', function(data) {
+        const { sender_id, sender_name, message_preview, notification_id } = data;
+        
+        // Prevent showing notification if already in the chat with this sender
+        const currentPath = window.location.pathname;
+        const isCurrentlyInChatWithSender = currentPath.startsWith(`/chat/${sender_id}`);
+
+        if (!isCurrentlyInChatWithSender) {
+            console.log("New notification received:", data);
+            addNotificationToList(notification_id, sender_id, sender_name, message_preview);
+            notificationCount++;
+            updateNotificationBadge();
+            notificationSound.play().catch(e => console.error("Error playing sound:", e));
+            requestNotificationPermission(sender_name, message_preview, sender_id); 
+        } else {
+            console.log(`User is in chat with ${sender_name}, not showing separate notification.`);
+            // Jika di chat, tandai sebagai terbaca di server agar tidak menumpuk saat user kembali ke dashboard
+            socket.emit('mark_notification_as_read', { notification_id: notification_id });
+        }
+    });
+
+    // This event is emitted by server when notifications are updated (e.g., marked as read)
+    socket.on('notifications_updated', function(data) {
+        if (data.user_id === CURRENT_USER_ID) {
+            // Kita perlu mengambil ulang daftar notifikasi dari server dan me-render ulang
+            fetchNotificationsAndRender(); 
+        }
     });
 
     socket.on('user_connected_status', function(data) {
@@ -110,86 +198,101 @@
         }
     });
 
-    // --- Handling New Messages for Notifications ---
-    socket.on('receive_message', function(data) {
-        // Hanya proses jika pesan ini DITERIMA oleh user saat ini
-        if (data.receiver_id == CURRENT_USER_ID) {
-            console.log("New message received on dashboard:", data);
-            
-            // Increment notification count
-            notificationCount++;
-            updateNotificationBadge();
-
-            // Store and display notification in the list
-            addNotificationToList(data.sender_id, data.sender_name, data.message);
-
-            // Play a sound
-            notificationSound.play().catch(e => console.error("Error playing sound:", e));
-
-            // Request desktop notification permission and show notification
-            requestNotificationPermission(data.sender_name, data.message);
-        }
-    });
-
+    // UI Update Functions
     function updateNotificationBadge() {
         if (notificationCount > 0) {
             notificationBadge.textContent = notificationCount;
             notificationBadge.classList.remove('hidden');
         } else {
+            notificationBadge.textContent = '0';
             notificationBadge.classList.add('hidden');
         }
     }
 
-    function addNotificationToList(senderId, senderName, message) {
-        // Prevent duplicate entries for the same sender if they send multiple messages
-        if (!notifications[senderId]) {
-            notifications[senderId] = { count: 0, lastMessage: '' };
+    // Fungsi untuk menambahkan notifikasi ke daftar UI
+    function addNotificationToList(notificationId, senderId, senderName, messagePreview) {
+        // Jika notifikasi sudah ada di map, berarti sudah di UI, jadi tidak perlu ditambah lagi
+        if (notificationsMap[notificationId]) {
+            console.log(`Notification ID ${notificationId} already exists, skipping.`);
+            return;
         }
-        notifications[senderId].count++;
-        notifications[senderId].lastMessage = message;
 
-        // Remove placeholder if it exists
-        if (noNewMessagesPlaceholder && noNewMessagesPlaceholder.parentNode) {
+        const noNewMessagesPlaceholder = document.getElementById('no-new-messages-placeholder'); 
+        if (noNewMessagesPlaceholder) { 
             noNewMessagesPlaceholder.remove();
         }
 
-        let notificationItem = document.getElementById(`notification-item-${senderId}`);
-        if (notificationItem) {
-            // Update existing notification
-            notificationItem.querySelector('.notification-message').textContent = message;
-            notificationItem.querySelector('.notification-count').textContent = `(${notifications[senderId].count})`;
-        } else {
-            // Create new notification item
-            const listItem = document.createElement('li');
-            listItem.id = `notification-item-${senderId}`;
-            listItem.className = 'bg-[#2e204d] p-2 rounded flex justify-between items-center';
-            listItem.innerHTML = `
-                <div>
-                    <span class="font-semibold text-orange-300">${senderName}</span> 
-                    <span class="text-xs text-gray-400 notification-count">(${notifications[senderId].count})</span>:
-                    <p class="text-sm truncate notification-message">${message}</p>
-                </div>
-                <a href="/chat/${senderId}" class="text-blue-400 hover:underline text-sm ml-2">Chat</a>
-            `;
-            newMessagesList.prepend(listItem); // Add to top
-        }
+        const listItem = document.createElement('li');
+        listItem.id = `notification-item-${notificationId}`;
+        listItem.dataset.notificationId = notificationId;
+        listItem.dataset.senderId = senderId;
+        listItem.className = 'bg-[#2e204d] p-2 rounded flex justify-between items-center';
+        listItem.innerHTML = `
+            <div>
+                <span class="font-semibold text-orange-300">${senderName}</span>
+                <p class="text-sm truncate notification-message">${messagePreview}</p>
+            </div>
+            <a href="/chat/${senderId}" class="text-blue-400 hover:underline text-sm ml-2">Chat</a>
+        `;
+        
+        listItem.addEventListener('click', function() {
+            socket.emit('mark_notification_as_read', { notification_id: notificationId });
+            listItem.remove();
+            delete notificationsMap[notificationId];
+            notificationCount--;
+            updateNotificationBadge();
+            if (notificationCount === 0) {
+                newMessagesList.innerHTML = '<li class="text-sm text-gray-400" id="no-new-messages-placeholder">No new messages.</li>';
+            }
+        });
+
+        newMessagesList.prepend(listItem); 
+        notificationsMap[notificationId] = { senderId, senderName, messagePreview }; 
     }
 
     function clearAllNotifications() {
+        socket.emit('mark_all_notifications_as_read', { user_id: CURRENT_USER_ID });
+        // Hapus langsung dari UI untuk feedback instan
         notificationCount = 0;
-        notifications = {}; // Reset stored notifications
+        notificationsMap = {}; 
         updateNotificationBadge();
         newMessagesList.innerHTML = '<li class="text-sm text-gray-400" id="no-new-messages-placeholder">No new messages.</li>';
-        notificationListContainer.classList.add('hidden'); // Hide the list
+        notificationListContainer.classList.add('hidden'); 
     }
 
-    // Toggle notification list visibility
+    // Fungsi untuk mengambil ulang notifikasi dari server via AJAX
+    function fetchNotificationsAndRender() {
+        fetch('/api/notifications/unread') 
+            .then(response => response.json())
+            .then(data => {
+                newMessagesList.innerHTML = ''; 
+                notificationsMap = {}; 
+                notificationCount = 0; 
+                if (data.length === 0) {
+                    newMessagesList.innerHTML = '<li class="text-sm text-gray-400" id="no-new-messages-placeholder">No new messages.</li>';
+                } else {
+                    data.forEach(notif => {
+                        addNotificationToList(notif.id, notif.sender_id, notif.sender_name, notif.content);
+                        notificationCount++;
+                    });
+                }
+                updateNotificationBadge();
+            })
+            .catch(error => console.error("Error fetching unread notifications:", error));
+    }
+
+
+    // Event Listeners for UI interaction
     notificationBell.addEventListener('click', function(event) {
         notificationListContainer.classList.toggle('hidden');
-        event.stopPropagation(); // Prevent document click from immediately closing
+        if (!notificationListContainer.classList.contains('hidden')) {
+            // Saat dropdown dibuka, kita akan memicu pembaruan notifikasi dari server
+            // untuk memastikan daftar selalu yang terbaru.
+            fetchNotificationsAndRender(); 
+        }
+        event.stopPropagation(); 
     });
 
-    // Close notification list when clicking outside
     document.addEventListener('click', function(event) {
         if (!notificationListContainer.contains(event.target) && !notificationBell.contains(event.target)) {
             notificationListContainer.classList.add('hidden');
@@ -198,47 +301,48 @@
 
     clearNotificationsBtn.addEventListener('click', clearAllNotifications);
 
-    // --- Desktop Notification Logic ---
-    function requestNotificationPermission(senderName, message) {
+    // Desktop Notification Logic
+    function requestNotificationPermission(senderName, message, senderId) { 
         if (!("Notification" in window)) {
             console.warn("This browser does not support desktop notification");
             return;
         }
 
         if (Notification.permission === "granted") {
-            showDesktopNotification(senderName, message);
+            showDesktopNotification(senderName, message, senderId); 
         } else if (Notification.permission !== "denied") {
             Notification.requestPermission().then(function (permission) {
                 if (permission === "granted") {
-                    showDesktopNotification(senderName, message);
+                    showDesktopNotification(senderName, message, senderId); 
                 }
             });
         }
     }
 
-    function showDesktopNotification(senderName, message) {
+    function showDesktopNotification(senderName, message, senderId) { 
         const options = {
             body: message,
-            icon: '/static/images/chat-icon.png' // Pastikan Anda memiliki ikon ini
+            icon: '/static/images/chat-icon.png' 
         };
-        const notification = new Notification(`New message from ${senderName}`, options);
+        const notification = new Notification(`Pesan baru dari ${senderName}`, options);
 
-        // Optional: Close notification after some time, or when clicked
         notification.onclick = function() {
-            window.focus(); // Focus on the browser window
-            window.location.href = `/chat/${CURRENT_USER_ID}`; // Redirect to chat page (adjust if needed)
+            window.focus(); 
+            window.location.href = `/chat/${senderId}`; 
             this.close();
         };
     }
 
-    // --- Existing Dashboard Functions ---
+    // Online User List Management (Minor Refinements)
     function addUserToList(user) {
         if (document.getElementById(`user-${user.user_id}`)) {
-            return;
+            return; 
         }
-        if (noOnlineUsersPlaceholder && noOnlineUsersPlaceholder.parentNode) {
-            noOnlineUsersPlaceholder.remove();
+        const currentPlaceholder = document.getElementById('no-online-users-placeholder');
+        if (currentPlaceholder) {
+            currentPlaceholder.remove();
         }
+
         const listItem = document.createElement('li');
         listItem.id = `user-${user.user_id}`;
         listItem.innerHTML = `
@@ -267,6 +371,8 @@
             onlineUsersList.appendChild(newPlaceholder);
         }
     }
+
+    
 
 </script>
 {% endblock %}

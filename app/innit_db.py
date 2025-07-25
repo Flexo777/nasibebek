@@ -1,15 +1,12 @@
 import sqlite3
 
-# Nama database
 DB_NAME = 'chatapp.db'
 
-# Fungsi untuk membuat tabel
 def init_db():
-    # Membuat koneksi ke database SQLite
+
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     
-    # Membuat tabel pengguna (users)
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -19,7 +16,6 @@ def init_db():
     )
     ''')
     
-    # Membuat tabel pesan (messages)
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,11 +29,10 @@ def init_db():
     )
     ''')
 
-    # Menyimpan perubahan dan menutup koneksi
     conn.commit()
     conn.close()
 
-# Memanggil fungsi untuk menginisialisasi database
+
 if __name__ == '__main__':
     init_db()
     print("Database initialized successfully.")
